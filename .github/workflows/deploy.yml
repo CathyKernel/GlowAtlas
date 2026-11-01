@@ -21,22 +21,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # NOTE: no `cache:` input here — actions/setup-node's npm/yarn/pnpm cache
+      # requires package-lock.json / npm-shrinkwrap.json / yarn.lock, and this
+      # repo uses bun.lock. Dependency caching is handled for bun below.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 22
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install dependencies
-        run: |
-          if [ -f bun.lock ]; then
-            curl -fsSL https://bun.sh/install | bash
-            export BUN_INSTALL="$HOME/.bun"
-            export PATH="$BUN_INSTALL/bin:$PATH"
-            bun install --frozen-lockfile
-          else
-            npm install
-          fi
+        run: bun install --frozen-lockfile
 
       - name: Compute base path
         id: base
@@ -49,15 +54,10 @@ jobs:
             echo "path=/$REPO" >> "$GITHUB_OUTPUT"
           fi
 
+      # Runs `next build` on Node itself (bun's node_modules layout is
+      # npm-compatible), which is the most battle-tested path for Next.js.
       - name: Build static site
-        run: |
-          if [ -f bun.lock ]; then
-            export BUN_INSTALL="$HOME/.bun"
-            export PATH="$BUN_INSTALL/bin:$PATH"
-            bun run build:pages
-          else
-            npm run build:pages
-          fi
+        run: npm run build:pages
         env:
           PAGES_BASE_PATH: ${{ steps.base.outputs.path }}
 
